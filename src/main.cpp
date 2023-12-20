@@ -4,6 +4,8 @@
 #include <filesystem>
 #include <cstring>
 #include <algorithm>
+#include <thread>
+#include <chrono>
 
 #include "ansi.h"
 #include "settings.h"
@@ -26,6 +28,26 @@ char meme_search[MEME_SEARCH_MAX];
 int selected_item = 0;
 int selected_meme = 0;
 int selected_meme_opt = 0;
+
+bool meme_playing = false;
+
+void play_meme(int id) {
+    meme_playing = true;
+    std::thread playing_thread = std::thread([]() {
+        std::string spin = "|/-\\";
+        int spinptr = 0;
+        while (meme_playing) {
+            printf(MOVE_ABSOLUTE_FMT FG_COLOR_YELLOW BG_COLOR_DEFAULT "%c" FG_COLOR_DEFAULT " Playing", optionpos[BEGINNING_ITEMS] - 2, 13 + meme_width - 24, spin[spinptr++]);
+            FLUSH;
+            std::this_thread::sleep_for(std::chrono::milliseconds(125));
+            if (spinptr == spin.length()) spinptr = 0;
+        }
+    });
+    system(("ffplay -autoexit -hide_banner -loglevel error \"" + all_memes[id].string() + "\"").c_str());
+    meme_playing = false;
+    playing_thread.join();
+    printf(MOVE_ABSOLUTE_FMT "         ", optionpos[BEGINNING_ITEMS] - 2, 13 + meme_width - 24);
+}
 
 void refresh_directory() {
     all_memes.clear();
@@ -58,7 +80,7 @@ void print_meme_table() {
 void print_cursor(char cursor) {
     int pos = 0;
     int offset = selected_item - BEGINNING_ITEMS - MAX_MEME_LIMIT / 2;
-    offset = std::min(std::max(offset, 0), (int)all_memes.size() - MAX_MEME_LIMIT);
+    offset = std::min(std::max(offset, 0), std::max((int)all_memes.size() - MAX_MEME_LIMIT, 0));
     if (selected_item < BEGINNING_ITEMS) pos = optionpos[selected_item];
     else pos = optionpos[BEGINNING_ITEMS] + (selected_item - BEGINNING_ITEMS) - offset;
     printf(BG_COLOR_DEFAULT FG_COLOR_DEFAULT MOVE_ABSOLUTE_FMT "%c", pos, 5, cursor);
@@ -85,7 +107,7 @@ int end() {
 
 void print_search() {
     int margin = std::max(0, 16 - meme_search_len);
-    printf(MOVE_ABSOLUTE_FMT BG_COLOR_DARK_BLUE FG_COLOR_WHITE " [ 🔎 %s%s ] ", optionpos[4], 7, meme_search + std::max(0, meme_search_len - 16), std::string(margin, '_').c_str());
+    printf(MOVE_ABSOLUTE_FMT BG_COLOR_DARK_BLUE FG_COLOR_WHITE " [ 🔎 %s%s ] ", optionpos[4], 7, meme_search + std::max(0, meme_search_len - 16), std::string(margin, ' ').c_str());
 }
 
 int main() {
@@ -132,7 +154,8 @@ int main() {
                         if (selected_meme_opt < 0) selected_meme_opt = 0;
                         if (selected_meme_opt > 2) selected_meme_opt = 2;
                         if (kc == 10) {
-                            if (selected_meme_opt == 0) break;
+                            if (selected_meme_opt == 1) play_meme(selected_meme);
+                            break;
                         }
                         print_meme_action(false);
                         FLUSH;
@@ -148,6 +171,8 @@ int main() {
                 refresh_directory();
             }
             print_meme_table();
+            if (selected_item == 4) printf(MOVE_ABSOLUTE_FMT SHOW_CURSOR, optionpos[4], 13 + std::min(16, meme_search_len));
+            else printf(HIDE_CURSOR);
             FLUSH;
         }
     }
