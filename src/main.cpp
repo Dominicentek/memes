@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <thread>
 #include <chrono>
+#include <ctime>
+#include <cstdlib>
 
 #include "ansi.h"
 #include "settings.h"
@@ -30,6 +32,8 @@ int selected_meme = 0;
 int selected_meme_opt = 0;
 
 bool meme_playing = false;
+bool meme_stop_playing = false;
+int meme_counter = 0;
 
 void play_meme(int id) {
     meme_playing = true;
@@ -47,6 +51,40 @@ void play_meme(int id) {
     meme_playing = false;
     playing_thread.join();
     printf(MOVE_ABSOLUTE_FMT "         ", optionpos[BEGINNING_ITEMS] - 2, 13 + meme_width - 24);
+}
+
+void play_all_memes() {
+    meme_playing = true;
+    meme_stop_playing = false;
+    meme_counter = 0;
+    std::thread playing_thread = std::thread([]() {
+        std::string spin = "|/-\\";
+        int spinptr = 0;
+        keyboard kb;
+        while (meme_playing) {
+            if (meme_stop_playing) printf(MOVE_ABSOLUTE_FMT FG_COLOR_YELLOW BG_COLOR_DEFAULT "%c" FG_COLOR_DEFAULT " Waiting for video to finish", optionpos[0], 25, spin[spinptr++]);
+            else printf(MOVE_ABSOLUTE_FMT FG_COLOR_YELLOW BG_COLOR_DEFAULT "%c" FG_COLOR_DEFAULT " (%d/%d)", optionpos[0], 25, spin[spinptr++], meme_counter + 1, all_memes.size());
+            FLUSH;
+            std::this_thread::sleep_for(std::chrono::milliseconds(125));
+            if (spinptr == spin.length()) spinptr = 0;
+            while (kb.kbhit()) {
+                if (kb.getch() == 3) meme_stop_playing = true;
+            }
+        }
+    });
+    std::vector<std::filesystem::path> shuffled = {};
+    for (int i = 0; i < all_memes.size(); i++) {
+        shuffled.push_back(all_memes[i]);
+    }
+    for (int i = 0; i < all_memes.size() && !meme_stop_playing; i++) {
+        int idx = rand() % shuffled.size();
+        system(("ffplay -autoexit -hide_banner -loglevel error \"" + shuffled[idx].string() + "\"").c_str());
+        shuffled.erase(shuffled.begin() + idx);
+        meme_counter++;
+    }
+    meme_playing = false;
+    playing_thread.join();
+    printf(MOVE_ABSOLUTE_FMT FG_COLOR_DEFAULT BG_COLOR_DEFAULT CLEAR_CURSOR_TO_LINE_END, optionpos[0], 25);
 }
 
 void refresh_directory() {
@@ -111,6 +149,7 @@ void print_search() {
 }
 
 int main() {
+    srand(clock());
     refresh_directory();
     printf(CLEAR_SCREEN);
     printf(MOVE_ABSOLUTE_FMT "> " BG_COLOR_DARK_BLUE FG_COLOR_WHITE " [ Play All    ] ",         optionpos[0], 5);
@@ -118,9 +157,6 @@ int main() {
     printf(MOVE_ABSOLUTE_FMT      BG_COLOR_DARK_BLUE FG_COLOR_WHITE " [ Download    ] ",         optionpos[2], 7);
     printf(MOVE_ABSOLUTE_FMT      BG_COLOR_DARK_BLUE FG_COLOR_WHITE " [ Refresh     ] ",         optionpos[3], 7);
     print_search();
-    printf(MOVE_ABSOLUTE(3, 37) BG_COLOR_DEFAULT FG_COLOR_DEFAULT "Use the arrow keys to navigate.");
-    printf(MOVE_ABSOLUTE(4, 37) BG_COLOR_DEFAULT FG_COLOR_DEFAULT "Enter to select.");
-    printf(MOVE_ABSOLUTE(5, 37) BG_COLOR_DEFAULT FG_COLOR_DEFAULT "Ctrl+C or ESC to quit.");
     print_meme_table();
     printf(HIDE_CURSOR);
     FLUSH;
@@ -137,6 +173,7 @@ int main() {
             if (selected_item > BEGINNING_ITEMS + all_memes.size() - 1) selected_item = all_memes.size() - 1 + BEGINNING_ITEMS;
             print_cursor('>');
             if (kc == 10) {
+                if (selected_item == 0) play_all_memes();
                 if (selected_item == 3) refresh_directory();
                 if (selected_item >= BEGINNING_ITEMS) {
                     selected_meme = selected_item - BEGINNING_ITEMS;
