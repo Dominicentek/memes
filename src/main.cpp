@@ -164,19 +164,20 @@ void print_channel_switcher() {
     for (int i = 0; i < channels.size(); i++) {
         if (maxlen < channels[i].first.length()) maxlen = channels[i].first.length();
     }
-    for (int i = 0; i <= MAX_CHANNEL_LIMIT; i++) {
-        if (i >= channels.size()) break;
-        if (i == curr_channel_index) printf(MOVE_ABSOLUTE_FMT
+    for (int i = 0; i < MAX_CHANNEL_LIMIT; i++) {
+        int index = i + offset;
+        if (index >= channels.size()) break;
+        if (index == curr_channel_index) printf(MOVE_ABSOLUTE_FMT
             BG_COLOR_DEFAULT FG_COLOR_DEFAULT
             BG_COLOR_WHITE FG_COLOR_DARK_BLUE
             " [ %-*s ] ",
-            optionpos[3] + i, 34, maxlen, channels[i].first.c_str()
+            optionpos[3] + i, 34, maxlen, channels[index].first.c_str()
         );
         else printf(MOVE_ABSOLUTE_FMT
             BG_COLOR_DEFAULT FG_COLOR_DEFAULT
             BG_COLOR_DARK_BLUE FG_COLOR_WHITE
             " [ %-*s ] ",
-            optionpos[3] + i, 34, maxlen, channels[i].first.c_str()
+            optionpos[3] + i, 34, maxlen, channels[index].first.c_str()
         );
     }
     FLUSH;
