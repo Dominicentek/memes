@@ -302,6 +302,7 @@ int main() {
             print_cursor(' ');
             if (kc == 1792833) selected_item--;
             if (kc == 1792834) selected_item++;
+            if (kc == 458962302 || kc == 1792840) selected_item = 0;
             if (selected_item < 0) selected_item = 0;
             if (selected_item > BEGINNING_ITEMS + all_memes.size() - 1) selected_item = all_memes.size() - 1 + BEGINNING_ITEMS;
             print_cursor('>');
