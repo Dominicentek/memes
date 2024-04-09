@@ -231,6 +231,7 @@ void refresh_directory() {
         if (filename.find(search_term) == std::string::npos) continue;
         all_memes.push_back(entry.path());
     }
+    std::sort(all_memes.begin(), all_memes.end());
 }
 
 void print_meme_table() {
