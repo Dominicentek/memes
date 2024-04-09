@@ -8,6 +8,7 @@
 #include <chrono>
 #include <ctime>
 #include <cstdlib>
+#include <fstream>
 
 #include "ansi.h"
 #include "settings.h"
@@ -35,13 +36,13 @@ bool meme_playing = false;
 bool meme_stop_playing = false;
 int meme_counter = 0;
 
-void play_meme(int id) {
+void play_meme(int id, int y, int x) {
     meme_playing = true;
-    std::thread playing_thread = std::thread([]() {
+    std::thread playing_thread = std::thread([&]() {
         std::string spin = "|/-\\";
         int spinptr = 0;
         while (meme_playing) {
-            printf(MOVE_ABSOLUTE_FMT FG_COLOR_YELLOW BG_COLOR_DEFAULT "%c" FG_COLOR_DEFAULT " Playing", optionpos[BEGINNING_ITEMS] - 2, 13 + meme_width - 24, spin[spinptr++]);
+            printf(MOVE_ABSOLUTE_FMT FG_COLOR_YELLOW BG_COLOR_DEFAULT "%c" FG_COLOR_DEFAULT " Playing", y, x, spin[spinptr++]);
             FLUSH;
             std::this_thread::sleep_for(std::chrono::milliseconds(125));
             if (spinptr == spin.length()) spinptr = 0;
@@ -50,7 +51,7 @@ void play_meme(int id) {
     system(("ffplay -autoexit -hide_banner -loglevel error \"" + all_memes[id].string() + "\"").c_str());
     meme_playing = false;
     playing_thread.join();
-    printf(MOVE_ABSOLUTE_FMT "         ", optionpos[BEGINNING_ITEMS] - 2, 13 + meme_width - 24);
+    printf(MOVE_ABSOLUTE_FMT "         ", y, x);
 }
 
 void play_all_memes() {
@@ -87,11 +88,69 @@ void play_all_memes() {
     printf(MOVE_ABSOLUTE_FMT FG_COLOR_DEFAULT BG_COLOR_DEFAULT CLEAR_CURSOR_TO_LINE_END, optionpos[0], 25);
 }
 
+#define swrite(s) write(s, sizeof(s) - 1);
+
+void send_meme(int id, int y, int x) {
+    std::ofstream out = std::ofstream("/tmp/body.dat", std::ios::binary);
+    std::string name = all_memes[id].filename().string();
+    std::ifstream in = std::ifstream(all_memes[id], std::ios::binary);
+    int datalen = std::filesystem::file_size(all_memes[id]);
+    char* data = (char*)malloc(datalen);
+    in.read(data, datalen);
+    in.close();
+    out.swrite("--boundary\n");
+    out.swrite("Content-Disposition: form-data; name=\"payload_json\"\n");
+    out.swrite("Content-Type: application/json\n");
+    out.swrite("\n");
+    out.swrite("{\n");
+    out.swrite("  \"attachments\": [{\n");
+    out.swrite("    \"id\": 0,\n");
+    out.swrite("    \"filename\": \"");
+    out.write(name.c_str(), name.length()); 
+    out.swrite("\"\n");
+    out.swrite("  }]\n");
+    out.swrite("}\n");
+    out.swrite("--boundary\n");
+    out.swrite("Content-Disposition: form-data; name=\"tts\"\n");
+    out.swrite("\n");
+    out.swrite("false\n");
+    out.swrite("--boundary\n");
+    out.swrite("Content-Disposition: form-data; name=\"files[0]\"; filename=\"");
+    out.write(name.c_str(), name.length());
+    out.swrite("\"\n");
+    out.swrite("Content-Type: video/mp4\n");
+    out.swrite("\n");
+    out.write(data, datalen);
+    out.swrite("\n--boundary--\n");
+    out.close();
+    free(data);
+    bool sending = true;
+    std::thread sending_thread = std::thread([&]() {
+        std::string spin = "|/-\\";
+        int spinptr = 0;
+        while (sending) {
+            printf(MOVE_ABSOLUTE_FMT FG_COLOR_YELLOW BG_COLOR_DEFAULT "%c" FG_COLOR_DEFAULT " Sending", y, x, spin[spinptr++]);
+            if (spinptr == spin.length()) spinptr = 0;
+            FLUSH;
+            std::this_thread::sleep_for(std::chrono::milliseconds(125));
+        }
+    });
+    system("curl -X POST --header \"Content-Type: multipart/form-data; boundary=boundary\" --header \"Accept: */*\" --header \"Authorization: " DISCORD_TOKEN "\" --data-binary @/tmp/body.dat https://discord.com/api/v9/channels/" DISCORD_CHANNEL "/messages 1> /dev/null 2> /dev/null");
+    sending = false;
+    sending_thread.join();
+    printf(MOVE_ABSOLUTE_FMT "         ", y, x);
+    FLUSH;
+}
+
+int get_random() {
+    return rand() % all_memes.size();
+}
+
 void refresh_directory() {
     all_memes.clear();
     std::string search_term = std::string(meme_search);
     std::transform(search_term.begin(), search_term.end(), search_term.begin(), ::tolower);
-    for (auto& entry : std::filesystem::recursive_directory_iterator(meme_folder)) {
+    for (auto& entry : std::filesystem::directory_iterator(meme_folder)) {
         if (std::filesystem::is_directory(entry.path())) continue;
         if (meme_width < entry.path().filename().string().length()) meme_width = entry.path().filename().string().length();
         std::string filename = entry.path().filename();
@@ -154,7 +213,7 @@ int main() {
     printf(CLEAR_SCREEN);
     printf(MOVE_ABSOLUTE_FMT "> " BG_COLOR_DARK_BLUE FG_COLOR_WHITE " [ Play All    ] ",         optionpos[0], 5);
     printf(MOVE_ABSOLUTE_FMT      BG_COLOR_DARK_BLUE FG_COLOR_WHITE " [ Send Random ] ",         optionpos[1], 7);
-    printf(MOVE_ABSOLUTE_FMT      BG_COLOR_DARK_BLUE FG_COLOR_WHITE " [ Download    ] ",         optionpos[2], 7);
+    printf(MOVE_ABSOLUTE_FMT      BG_COLOR_DARK_BLUE FG_COLOR_WHITE " [ Play Random ] ",         optionpos[2], 7);
     printf(MOVE_ABSOLUTE_FMT      BG_COLOR_DARK_BLUE FG_COLOR_WHITE " [ Refresh     ] ",         optionpos[3], 7);
     print_search();
     print_meme_table();
@@ -174,6 +233,8 @@ int main() {
             print_cursor('>');
             if (kc == 10) {
                 if (selected_item == 0) play_all_memes();
+                if (selected_item == 1) send_meme(get_random(), optionpos[1], 25);
+                if (selected_item == 2) play_meme(get_random(), optionpos[2], 25);
                 if (selected_item == 3) refresh_directory();
                 if (selected_item >= BEGINNING_ITEMS) {
                     selected_meme = selected_item - BEGINNING_ITEMS;
@@ -191,11 +252,13 @@ int main() {
                         if (selected_meme_opt < 0) selected_meme_opt = 0;
                         if (selected_meme_opt > 2) selected_meme_opt = 2;
                         if (kc == 10) {
-                            if (selected_meme_opt == 1) play_meme(selected_meme);
+                            if (selected_meme_opt == 2) send_meme(selected_meme, optionpos[BEGINNING_ITEMS] - 2, 13 + meme_width - 24);
+                            if (selected_meme_opt == 1) play_meme(selected_meme, optionpos[BEGINNING_ITEMS] - 2, 13 + meme_width - 24);
                             break;
                         }
                         print_meme_action(false);
                         FLUSH;
+                        std::this_thread::sleep_for(std::chrono::milliseconds(50));
                     }
                     print_meme_action(true);
                 }
@@ -212,6 +275,7 @@ int main() {
             else printf(HIDE_CURSOR);
             FLUSH;
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     END;
 }
